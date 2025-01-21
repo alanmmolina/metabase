@@ -108,7 +108,7 @@ describeEE("scenarios > embedding-sdk > interactive-dashboard", () => {
         getSdkRoot().within(() => {
           cy.findByText("Orders in a dashboard").should("be.visible");
           cy.findByText("Orders").should("be.visible");
-          cy.findByText("Rows 1-6 of first 2000").should("be.visible");
+          cy.findByText("Rows 1-7 of first 2000").should("be.visible");
           cy.findByText("Test text card").should("be.visible");
         });
       });

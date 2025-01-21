@@ -63,6 +63,7 @@ export const SdkUsageProblemBanner = ({
           onClick={() => setExpanded(!expanded)}
           className={cx(S.Indicator, isError ? S.Error : S.Warning)}
           data-testid="sdk-usage-problem-indicator"
+          i-should-be-flex="true"
         >
           <Flex bg="white" px="sm" py="xs" className={S.Logo}>
             <LogoIcon height={24} fill={unthemedBrand} />

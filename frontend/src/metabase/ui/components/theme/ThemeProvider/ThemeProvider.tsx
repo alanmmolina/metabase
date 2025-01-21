@@ -8,6 +8,9 @@ import { getThemeOverrides } from "../../../theme";
 import { themeColor } from "../../../utils/colors";
 import { DatesProvider } from "../DatesProvider";
 
+import "@mantine/core/styles.css"; // TODO: how to use in embedding?
+import "@mantine/dates/styles.css";
+
 interface ThemeProviderProps {
   children: ReactNode;
 
