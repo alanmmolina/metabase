@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import getCompareSnapshotsPlugin from "cypress-image-diff-js/plugin";
 import installLogsPrinter from "cypress-terminal-report/src/installLogsPrinter";
+
+import { OnWrapper } from "e2e/support/utils/on-wrapper";
 
 import * as ciTasks from "./ci_tasks";
 import {
@@ -63,9 +66,8 @@ function getSplittableSpecs(specs) {
 
 const defaultConfig = {
   // This is the functionality of the old cypress-plugins.js file
-  setupNodeEvents(on, config) {
-    // `on` is used to hook into various events Cypress emits
-    // `config` is the resolved Cypress config
+  setupNodeEvents(originalOn, config) {
+    const { on, forward: forwardEvents } = new OnWrapper(originalOn);
 
     // cypress-terminal-report
     if (isCI) {
@@ -174,7 +176,11 @@ const defaultConfig = {
       cypressSplit(on, config, getSplittableSpecs);
     }
 
-    return config;
+    const compareSnapshotsPluginConfig = getCompareSnapshotsPlugin(on, config);
+
+    forwardEvents();
+
+    return compareSnapshotsPluginConfig;
   },
   supportFile: "e2e/support/cypress.js",
   chromeWebSecurity: false,
