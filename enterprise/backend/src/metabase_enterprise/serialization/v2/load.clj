@@ -6,6 +6,7 @@
    [metabase-enterprise.serialization.v2.backfill-ids :as serdes.backfill]
    [metabase-enterprise.serialization.v2.ingest :as serdes.ingest]
    [metabase.models.serialization :as serdes]
+   [metabase.util :as u]
    [metabase.util.log :as log]
    [toucan2.core :as t2]))
 
@@ -92,7 +93,14 @@
                              (throw (ex-info (format "Failed to read file for %s" (serdes/log-path-str path))
                                              (path-error-data ::not-found expanding path)
                                              e))))
+                ;; If a nil :entity_id is provided we must guarantee a new entity is created
+                ;; To get a nil entity_id, a user has to manually set the entity_id to null in the yaml file.
+                ;; This is because:
+                ;; - exported entities have a :entity_id in every case
+                ;; - backfill (pre import) guarantees all entities have ids in the appdb
+                require-new-entity (nil? (:entity_id ingested ::not-found))
                 ingested (cond-> ingested
+                           require-new-entity (assoc :entity_id (u/generate-nano-id))
                            modfn modfn)
                 deps     (serdes/dependencies ingested)
                 _        (log/debug "Loading dependencies" deps)
@@ -102,8 +110,8 @@
                              (update :seen conj path)
                              (update :expanding disj path))
                 ;; Use the abstract path as attached by the ingestion process, not the original one we were passed.
-                rebuilt-path    (serdes/path ingested)
-                local-or-nil    (serdes/load-find-local rebuilt-path)]
+                rebuilt-path (serdes/path ingested)
+                local-or-nil (when-not require-new-entity (serdes/load-find-local rebuilt-path))]
             (try
               (serdes/load-one! ingested local-or-nil)
               ctx
