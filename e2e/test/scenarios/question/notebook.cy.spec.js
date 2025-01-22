@@ -705,6 +705,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
         horizontal,
         vertical,
       });
+      // eslint-disable-next-line no-unsafe-element-filtering
       cy.findAllByTestId("notebook-cell-item")
         .eq(index)
         .should("have.text", name);
@@ -724,6 +725,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
           vertical,
         });
       });
+      // eslint-disable-next-line no-unsafe-element-filtering
       H.getNotebookStep(type)
         .findAllByTestId("notebook-cell-item")
         .eq(index)
@@ -883,6 +885,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
             .should("eq", "Revenue");
         });
 
+      // eslint-disable-next-line no-unsafe-element-filtering
       cy.get("@table")
         .last()
         .as("tableBody")
@@ -917,6 +920,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
       .findByText("by month")
       .click();
 
+    // eslint-disable-next-line no-unsafe-element-filtering
     H.popover()
       .last()
       .within(() => {
@@ -932,6 +936,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
       .findByText("Auto bin")
       .click();
 
+    // eslint-disable-next-line no-unsafe-element-filtering
     H.popover()
       .last()
       .within(() => {
@@ -1052,6 +1057,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     H.joinTable("Reviews", "Product ID", "Product ID");
     H.addSummaryField({ metric: "Count of rows" });
     H.addSummaryGroupingField({ field: "Created At" });
+    // eslint-disable-next-line no-unsafe-element-filtering
     cy.findAllByRole("button", { name: "Join data" }).last().click();
     H.joinTable("Reviews", "Created At: Month", "Created At");
     cy.button("Summarize").click();
