@@ -68,7 +68,7 @@
       (m/dissoc-in [:card :collection])))
 
 (defmacro ^:private with-test-email! [& body]
-  `(mt/with-temporary-setting-values [~'site-url "https://metabase.com/testmb"]
+  `(mt/with-temporary-setting-values [~'site-url "https://testmb.com"]
      (mt/with-fake-inbox
        ~@body)))
 
@@ -157,9 +157,8 @@
                (t2/update! :model/Pulse (u/the-id not-archived-alert) {:name "Not Archived"})
                (t2/update! :model/Pulse (u/the-id archived-alert)     {:name "Archived", :archived true})
                (with-alerts-in-readable-collection! [not-archived-alert archived-alert]
-                 (set (map :name (mt/user-http-request :rasta :get 200 "alert"))))))))))
+                 (set (map :name (mt/user-http-request :rasta :get 200 "alert")))))))))
 
-(deftest get-alerts-test-2
   (testing "fetch archived alerts"
     (is (= #{"Archived"}
            (with-alert-in-collection! [_ _ not-archived-alert]
@@ -167,9 +166,8 @@
                (t2/update! :model/Pulse (u/the-id not-archived-alert) {:name "Not Archived"})
                (t2/update! :model/Pulse (u/the-id archived-alert)     {:name "Archived", :archived true})
                (with-alerts-in-readable-collection! [not-archived-alert archived-alert]
-                 (set (map :name (mt/user-http-request :rasta :get 200 "alert" :archived true))))))))))
+                 (set (map :name (mt/user-http-request :rasta :get 200 "alert" :archived true)))))))))
 
-(deftest get-alerts-test-3
   (testing "fetch alerts by user ID -- should return alerts created by the user,
            or alerts for which the user is a known recipient"
     (with-alert-in-collection! [_ _ creator-alert]
@@ -214,66 +212,45 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (deftest post-alert-test
-  (is (=? {:errors          {:alert_condition "enum of rows, goal"}
-           :specific-errors {:alert_condition ["should be either \"rows\" or \"goal\", received: \"not rows\""]}}
-          (mt/user-http-request
-           :rasta :post 400 "alert" {:alert_condition "not rows"
-                                     :card            "foobar"}))))
+  (is (= {:errors          {:alert_condition "enum of rows, goal"}
+          :specific-errors {:alert_condition ["should be either \"rows\" or \"goal\", received: \"not rows\""]}}
+         (mt/user-http-request
+          :rasta :post 400 "alert" {:alert_condition "not rows"
+                                    :card            "foobar"})))
 
-(deftest post-alert-test-2
-  (is (=? {:errors {:alert_first_only "boolean"}
-           :specific-errors {:alert_first_only ["missing required key, received: nil"]}}
-          (mt/user-http-request
-           :rasta :post 400 "alert" {:alert_condition "rows"}))))
+  (is (= {:errors {:alert_first_only "boolean"}
+          :specific-errors {:alert_first_only ["should be a boolean, received: nil"]}}
+         (mt/user-http-request
+          :rasta :post 400 "alert" {:alert_condition "rows"})))
 
-(deftest post-alert-test-3
-  (is (=? {:errors
-           {:card "value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`."}
-           :specific-errors
-           {:card ["missing required key, received: nil"]}}
-          (mt/user-http-request
-           :rasta :post 400 "alert" {:alert_condition  "rows"
-                                     :alert_first_only false}))))
+  (is (= {:errors
+          {:card "value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`."}
+          :specific-errors
+          {:card
+           ["value must be a map with the keys `include_csv`, `include_xls`, and `dashboard_card_id`., received: nil"]}}
+         (mt/user-http-request
+          :rasta :post 400 "alert" {:alert_condition  "rows"
+                                    :alert_first_only false})))
 
-(deftest post-alert-test-4
-  (is (= {:errors {:channels "one or more map"} :specific-errors {:channels ["missing required key, received: nil"]}}
+  (is (= {:errors {:channels "one or more map"} :specific-errors {:channels ["invalid type, received: nil"]}}
          (mt/user-http-request
           :rasta :post 400 "alert" {:alert_condition  "rows"
                                     :alert_first_only false
-                                    :card             {:id 100, :include_csv false, :include_xls false, :dashboard_card_id nil}}))))
+                                    :card             {:id 100, :include_csv false, :include_xls false, :dashboard_card_id nil}})))
 
-(deftest post-alert-test-5
   (is (= {:errors {:channels "one or more map"} :specific-errors {:channels ["invalid type, received: \"foobar\""]}}
          (mt/user-http-request
           :rasta :post 400 "alert" {:alert_condition  "rows"
                                     :alert_first_only false
                                     :card             {:id 100, :include_csv false, :include_xls false, :dashboard_card_id nil}
-                                    :channels         "foobar"}))))
+                                    :channels         "foobar"})))
 
-(deftest post-alert-test-6
   (is (= {:errors {:channels "one or more map"} :specific-errors {:channels [["invalid type, received: \"abc\""]]}}
          (mt/user-http-request
           :rasta :post 400 "alert" {:alert_condition  "rows"
                                     :alert_first_only false
                                     :card             {:id 100, :include_csv false, :include_xls false, :dashboard_card_id nil}
                                     :channels         ["abc"]}))))
-
-(defn- new-alert-email [user body-map]
-  (mt/email-to user {:subject "You set up an alert",
-                     :body (merge {"https://metabase.com/testmb" true,
-                                   "My question"                 true}
-                                  body-map)}))
-
-(defn- added-to-alert-email [user body-map]
-  (mt/email-to user {:subject "Crowberto Corv added you to an alert",
-                     :body (merge {"https://metabase.com/testmb" true,
-                                   "now getting alerts" true}
-                                  body-map)}))
-
-(defn- unsubscribe-email [user body-map]
-  (mt/email-to user {:subject "You unsubscribed from an alert",
-                     :body (merge {"https://metabase.com/testmb" true}
-                                  body-map)}))
 
 (defn- default-alert [card]
   {:id                  true
@@ -316,27 +293,22 @@
 ;; Check creation of a new rows alert with email notification
 (deftest new-rows-with-email-test
   (mt/with-temp [:model/Card card {:name "My question"}]
-    (is (= [(-> (default-alert card)
-                (assoc-in [:card :include_csv] true)
-                (assoc-in [:card :collection_id] true)
-                (update-in [:channels 0] merge {:schedule_hour 12, :schedule_type "daily", :recipients []}))
-            (new-alert-email :rasta {"has any results" true})]
+    (is (= (-> (default-alert card)
+               (assoc-in [:card :include_csv] true)
+               (assoc-in [:card :collection_id] true)
+               (update-in [:channels 0] merge {:schedule_hour 12, :schedule_type "daily", :recipients []}))
            (mt/with-non-admin-groups-no-root-collection-perms
              (mt/with-temp [:model/Collection collection]
                (t2/update! :model/Card (u/the-id card) {:collection_id (u/the-id collection)})
                (with-alert-setup!
                  (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
-                 [(et/with-expected-messages 1
-                    (alert-response
-                     ((alert-client :rasta) :post 200 "alert"
-                                            {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
-                                             :collection_id    (u/the-id collection)
-                                             :alert_condition  "rows"
-                                             :alert_first_only false
-                                             :channels         [daily-email-channel]})))
-                  (et/regex-email-bodies #"https://metabase.com/testmb"
-                                         #"has any results"
-                                         #"My question")])))))))
+                 (alert-response
+                  ((alert-client :rasta) :post 200 "alert"
+                                         {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
+                                          :collection_id    (u/the-id collection)
+                                          :alert_condition  "rows"
+                                          :alert_first_only false
+                                          :channels         [daily-email-channel]})))))))))
 
 (defn- setify-recipient-emails [results]
   (update results :channels (fn [channels]
@@ -350,77 +322,53 @@
                           (assoc-in [:card :include_csv] true)
                           (update-in [:channels 0] merge {:schedule_hour 12
                                                           :schedule_type "daily"
-                                                          :recipients    (set (map recipient-details [:rasta :crowberto]))}))
-            :emails (merge (et/email-to :crowberto {:subject "You set up an alert"
-                                                    :body    {"https://metabase.com/testmb"  true
-                                                              "My question"                  true
-                                                              "now getting alerts"           false
-                                                              "confirmation that your alert" true}})
-                           (added-to-alert-email :rasta
-                                                 {"My question"                  true
-                                                  "now getting alerts"           true
-                                                  "confirmation that your alert" false}))}
+                                                          :recipients    (set (map recipient-details [:rasta :crowberto]))}))}
            (with-alert-setup!
              (array-map
-              :response (et/with-expected-messages 2
-                          (-> ((alert-client :crowberto) :post 200 "alert"
-                                                         {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
-                                                          :alert_condition  "rows"
-                                                          :alert_first_only false
-                                                          :channels         [(assoc daily-email-channel
-                                                                                    :details       {:emails nil}
-                                                                                    :recipients    (mapv mt/fetch-user [:crowberto :rasta]))]})
-                              setify-recipient-emails
-                              alert-response))
-              :emails (et/regex-email-bodies #"https://metabase.com/testmb"
-                                             #"now getting alerts"
-                                             #"confirmation that your alert"
-                                             #"My question")))))))
+              :response (-> ((alert-client :crowberto) :post 200 "alert"
+                                                       {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
+                                                        :alert_condition  "rows"
+                                                        :alert_first_only false
+                                                        :channels         [(assoc daily-email-channel
+                                                                                  :details       {:emails nil}
+                                                                                  :recipients    (mapv mt/fetch-user [:crowberto :rasta]))]})
+                            setify-recipient-emails
+                            alert-response)))))))
 
 ;; Check creation of a below goal alert
 (deftest below-goal-alert-test
-  (is (= (new-alert-email :rasta {"goes below its goal" true})
-         (mt/with-non-admin-groups-no-root-collection-perms
-           (mt/with-temp [:model/Collection collection {}
-                          :model/Card       card {:name          "My question"
-                                                  :display       "line"
-                                                  :collection_id (u/the-id collection)}]
-             (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
-             (with-alert-setup!
-               (et/with-expected-messages 1
-                 (mt/user-http-request
-                  :rasta :post 200 "alert"
-                  {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
-                   :alert_condition  "goal"
-                   :alert_above_goal false
-                   :alert_first_only false
-                   :channels         [daily-email-channel]}))
-               (et/regex-email-bodies #"https://metabase.com/testmb"
-                                      #"goes below its goal"
-                                      #"My question")))))))
+  (mt/with-non-admin-groups-no-root-collection-perms
+    (mt/with-temp [:model/Collection collection {}
+                   :model/Card       card {:name          "My question"
+                                           :display       "line"
+                                           :collection_id (u/the-id collection)}]
+      (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
+      (with-alert-setup!
+        (mt/user-http-request
+         :rasta :post 200 "alert"
+         {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
+          :alert_condition  "goal"
+          :alert_above_goal false
+          :alert_first_only false
+          :channels         [daily-email-channel]})))))
 
 ;; Check creation of a above goal alert
 (deftest above-goal-alert-test
-  (is (= (new-alert-email :rasta {"meets its goal" true})
-         (mt/with-non-admin-groups-no-root-collection-perms
-           (mt/with-temp [:model/Collection collection {}
-                          :model/Card       card {:name          "My question"
-                                                  :display       "bar"
-                                                  :collection_id (u/the-id collection)}]
-             (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
-             (with-alert-setup!
-               (et/with-expected-messages 1
-                 (mt/user-http-request
-                  :rasta :post 200 "alert"
-                  {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
-                   :collection_id    (u/the-id collection)
-                   :alert_condition  "goal"
-                   :alert_above_goal true
-                   :alert_first_only false
-                   :channels         [daily-email-channel]}))
-               (et/regex-email-bodies #"https://metabase.com/testmb"
-                                      #"meets its goal"
-                                      #"My question")))))))
+  (mt/with-non-admin-groups-no-root-collection-perms
+    (mt/with-temp [:model/Collection collection {}
+                   :model/Card       card {:name          "My question"
+                                           :display       "bar"
+                                           :collection_id (u/the-id collection)}]
+      (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
+      (with-alert-setup!
+        (mt/user-http-request
+         :rasta :post 200 "alert"
+         {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
+          :collection_id    (u/the-id collection)
+          :alert_condition  "goal"
+          :alert_above_goal true
+          :alert_first_only false
+          :channels         [daily-email-channel]})))))
 
 (defn- default-http-channel
   [id]
@@ -563,18 +511,13 @@
                    :model/PulseChannel          pc    (pulse-channel alert)
                    :model/PulseChannelRecipient _     (recipient pc :crowberto)]
       (is (= [(-> (default-alert card)
-                  (assoc-in [:channels 0 :recipients] (set (map recipient-details [:crowberto :rasta]))))
-              (et/email-to :rasta {:subject "Crowberto Corv added you to an alert"
-                                   :body    {"https://metabase.com/testmb" true, "now getting alerts" true}})]
+                  (assoc-in [:channels 0 :recipients] (set (map recipient-details [:crowberto :rasta]))))]
              (with-alert-setup!
-               [(et/with-expected-messages 1
-                  (alert-response
-                   (setify-recipient-emails
-                    ((alert-client :crowberto) :put 200 (alert-url alert)
-                                               (default-alert-req card pc {} [(mt/fetch-user :crowberto)
-                                                                              (mt/fetch-user :rasta)])))))
-                (et/regex-email-bodies #"https://metabase.com/testmb"
-                                       #"now getting alerts")]))))))
+               [(alert-response
+                 (setify-recipient-emails
+                  ((alert-client :crowberto) :put 200 (alert-url alert)
+                                             (default-alert-req card pc {} [(mt/fetch-user :crowberto)
+                                                                            (mt/fetch-user :rasta)]))))]))))))
 
 (deftest update-alerts-non-admin-test
   (testing "Non-admin users can update alerts they created"
@@ -616,16 +559,9 @@
         (testing "API response"
           (is (= (-> (default-alert card)
                      (assoc-in [:channels 0 :recipients] [(recipient-details :crowberto)]))
-                 (-> (mt/with-expected-messages 1
-                       ((alert-client :crowberto) :put 200 (alert-url alert)
-                                                  (default-alert-req card (u/the-id pc) {} [(mt/fetch-user :crowberto)])))
-                     alert-response))))
-        (testing "emails"
-          (is (= (mt/email-to :rasta {:subject "You’ve been unsubscribed from an alert"
-                                      :body    {"https://metabase.com/testmb"          true
-                                                "letting you know that Crowberto Corv" true}})
-                 (mt/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"letting you know that Crowberto Corv"))))))))
+                 (-> ((alert-client :crowberto) :put 200 (alert-url alert)
+                                                (default-alert-req card (u/the-id pc) {} [(mt/fetch-user :crowberto)]))
+                     alert-response))))))))
 
 (deftest update-alert-permissions-test
   (testing "Non-admin users cannot update alerts for cards in a collection they don't have access to"
@@ -695,41 +631,40 @@
                                              :collection_id (u/the-id collection)}]
         (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
         (with-alert-setup!
-          (et/with-expected-messages 1
-            (let [alert-details {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
-                                 :collection_id    (u/the-id collection)
-                                 :alert_condition  "goal"
-                                 :alert_above_goal true
-                                 :alert_first_only false
-                                 :channels         [daily-email-channel]}
-                  alert         (mt/user-http-request :rasta :post 200 "alert" alert-details)]
-              (testing "Creating alert also logs event."
-                (is (= {:topic    :alert-create
-                        :user_id  (mt/user->id :rasta)
-                        :model    "Card"
-                        :model_id (u/the-id alert)
-                        :details  {:archived     false
-                                   :name         "My question"
-                                   :card_id      (u/the-id card)
-                                   :parameters   []
-                                   :channel      ["email"]
-                                   :schedule     ["daily"]
-                                   :recipients   [[]]}}
-                       (mt/latest-audit-log-entry :alert-create (u/the-id alert)))))
-              (testing "Updating alert also logs event."
-                (mt/user-http-request :crowberto :put 200 (alert-url alert) alert-details)
-                (is (= {:topic    :alert-update
-                        :user_id  (mt/user->id :crowberto)
-                        :model    "Card"
-                        :model_id (u/the-id alert)
-                        :details  {:archived   true
-                                   :name       "My question"
-                                   :card_id    (u/the-id card)
-                                   :parameters []
-                                   :channel    ["email"]
-                                   :schedule   ["daily"]
-                                   :recipients [[]]}}
-                       (mt/latest-audit-log-entry :alert-update (u/the-id alert))))))))))))
+          (let [alert-details {:card             {:id (u/the-id card), :include_csv false, :include_xls false, :dashboard_card_id nil}
+                               :collection_id    (u/the-id collection)
+                               :alert_condition  "goal"
+                               :alert_above_goal true
+                               :alert_first_only false
+                               :channels         [daily-email-channel]}
+                alert         (mt/user-http-request :rasta :post 200 "alert" alert-details)]
+            (testing "Creating alert also logs event."
+              (is (= {:topic    :alert-create
+                      :user_id  (mt/user->id :rasta)
+                      :model    "Card"
+                      :model_id (u/the-id alert)
+                      :details  {:archived     false
+                                 :name         "My question"
+                                 :card_id      (u/the-id card)
+                                 :parameters   []
+                                 :channel      ["email"]
+                                 :schedule     ["daily"]
+                                 :recipients   [[]]}}
+                     (mt/latest-audit-log-entry :alert-create (u/the-id alert)))))
+            (testing "Updating alert also logs event."
+              (mt/user-http-request :crowberto :put 200 (alert-url alert) alert-details)
+              (is (= {:topic    :alert-update
+                      :user_id  (mt/user->id :crowberto)
+                      :model    "Card"
+                      :model_id (u/the-id alert)
+                      :details  {:archived   true
+                                 :name       "My question"
+                                 :card_id    (u/the-id card)
+                                 :parameters []
+                                 :channel    ["email"]
+                                 :schedule   ["daily"]
+                                 :recipients [[]]}}
+                     (mt/latest-audit-log-entry :alert-update (u/the-id alert)))))))))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                            GET /alert/question/:id                                             |
@@ -761,55 +696,56 @@
                  :model/PulseCard             _    (pulse-card alert card)
                  :model/PulseChannel          pc   (pulse-channel alert)
                  :model/PulseChannelRecipient _    (recipient pc :rasta)]
-    (mt/with-non-admin-groups-no-root-collection-perms
-      (with-alert-setup!
-        (with-alerts-in-readable-collection! [alert]
-          (is (= [(-> (default-alert card)
-                      (assoc :can_write false)
-                      (update-in [:channels 0] merge {:schedule_hour 15, :schedule_type "daily"})
-                      (assoc-in [:card :collection_id] true))]
-                 (map alert-response
-                      ((alert-client :rasta) :get 200 (alert-question-url card))))))))))
+    (is (= [(-> (default-alert card)
+                (assoc :can_write false)
+                (update-in [:channels 0] merge {:schedule_hour 15, :schedule_type "daily"})
+                (assoc-in [:card :collection_id] true))]
+           (mt/with-non-admin-groups-no-root-collection-perms
+             (with-alert-setup!
+               (map alert-response
+                    (with-alerts-in-readable-collection! [alert]
+                      ((alert-client :rasta) :get 200 (alert-question-url card)))))))))
 
-(deftest get-alert-question-test-2
   (testing "Non-admin users shouldn't see alerts they created if they're no longer recipients"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (assoc (basic-alert) :alert_above_goal true)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc    (pulse-channel alert)
-                   :model/PulseChannelRecipient pcr   (recipient pc :rasta)
-                   :model/PulseChannelRecipient _     (recipient pc :crowberto)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (is (= 1
-                 (count ((alert-client :rasta) :get 200 (alert-question-url card)))))
-          (t2/delete! :model/PulseChannelRecipient :id (u/the-id pcr))
-          (is (zero? (api:alert-question-count :rasta card))))))))
+    (is (= {:count-1 1
+            :count-2 0}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (assoc (basic-alert) :alert_above_goal true)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc    (pulse-channel alert)
+                          :model/PulseChannelRecipient pcr   (recipient pc :rasta)
+                          :model/PulseChannelRecipient _     (recipient pc :crowberto)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 (array-map
+                  :count-1 (count ((alert-client :rasta) :get 200 (alert-question-url card)))
+                  :count-2 (do
+                             (t2/delete! :model/PulseChannelRecipient :id (u/the-id pcr))
+                             (api:alert-question-count :rasta card)))))))))
 
-(deftest get-alert-question-test-3
   (testing "Non-admin users should not see others alerts, admins see all alerts"
-    (mt/with-temp [:model/Card                  card    (basic-alert-query)
-                   :model/Pulse                 alert-1 (assoc (basic-alert)
-                                                               :alert_above_goal false)
-                   :model/PulseCard             _       (pulse-card alert-1 card)
-                   :model/PulseChannel          pc-1    (pulse-channel alert-1)
-                   :model/PulseChannelRecipient _       (recipient pc-1 :rasta)
-                   ;; A separate admin created alert
-                   :model/Pulse                 alert-2 (assoc (basic-alert)
-                                                               :alert_above_goal false
-                                                               :creator_id       (mt/user->id :crowberto))
-                   :model/PulseCard             _       (pulse-card alert-2 card)
-                   :model/PulseChannel          pc-2    (pulse-channel alert-2)
-                   :model/PulseChannelRecipient _       (recipient pc-2 :crowberto)
-                   :model/PulseChannel          _       (assoc (pulse-channel alert-2) :channel_type "slack")]
-      (with-alerts-in-readable-collection! [alert-1 alert-2]
-        (with-alert-setup!
-          (is (= 1
-                 (api:alert-question-count :rasta card)))
-          (is (= 2
-                 (api:alert-question-count :crowberto card))))))))
+    (is (= {:rasta     1
+            :crowberto 2}
+           (mt/with-temp [:model/Card                  card    (basic-alert-query)
+                          :model/Pulse                 alert-1 (assoc (basic-alert)
+                                                                      :alert_above_goal false)
+                          :model/PulseCard             _       (pulse-card alert-1 card)
+                          :model/PulseChannel          pc-1    (pulse-channel alert-1)
+                          :model/PulseChannelRecipient _       (recipient pc-1 :rasta)
+                          ;; A separate admin created alert
+                          :model/Pulse                 alert-2 (assoc (basic-alert)
+                                                                      :alert_above_goal false
+                                                                      :creator_id       (mt/user->id :crowberto))
+                          :model/PulseCard             _       (pulse-card alert-2 card)
+                          :model/PulseChannel          pc-2    (pulse-channel alert-2)
+                          :model/PulseChannelRecipient _       (recipient pc-2 :crowberto)
+                          :model/PulseChannel          _       (assoc (pulse-channel alert-2) :channel_type "slack")]
+             (with-alerts-in-readable-collection! [alert-1 alert-2]
+               (with-alert-setup!
+                 (array-map
+                  :rasta     (api:alert-question-count :rasta     card)
+                  :crowberto (api:alert-question-count :crowberto card))))))))
 
-(deftest get-alert-question-test-4
   (testing "Archived alerts are excluded by default, unless `archived` parameter is sent"
     (mt/with-temp [:model/Card                  card    (basic-alert-query)
                    :model/Pulse                 alert-1 (assoc (basic-alert)
@@ -818,7 +754,7 @@
                    :model/PulseCard             _       (pulse-card alert-1 card)
                    :model/PulseChannel          pc-1    (pulse-channel alert-1)
                    :model/PulseChannelRecipient _       (recipient pc-1 :rasta)
-                   ;; A separate admin created alert
+                  ;; A separate admin created alert
                    :model/Pulse                 alert-2 (assoc (basic-alert)
                                                                :alert_above_goal false
                                                                :archived         true
@@ -829,12 +765,16 @@
                    :model/PulseChannel          _       (assoc (pulse-channel alert-2) :channel_type "slack")]
       (with-alerts-in-readable-collection! [alert-1 alert-2]
         (with-alert-setup!
-          (is (zero? (api:alert-question-count :rasta card)))
-          (is (zero? (api:alert-question-count :crowberto card)))
-          (is (= 1
-                 (api:alert-question-count :rasta card true)))
-          (is (= 2
-                 (api:alert-question-count :crowberto card true))))))))
+          (is (= {:rasta     0
+                  :crowberto 0}
+                 (array-map
+                  :rasta     (api:alert-question-count :rasta     card)
+                  :crowberto (api:alert-question-count :crowberto card))))
+          (is (= {:rasta     1
+                  :crowberto 2}
+                 (array-map
+                  :rasta     (api:alert-question-count :rasta     card true)
+                  :crowberto (api:alert-question-count :crowberto card true)))))))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         PUT /api/alert/:id/unsubscribe                                         |
@@ -857,116 +797,97 @@
 
 (deftest unsubscribe-tests
   (testing "Alert has two recipients, and non-admin unsubscribes"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (basic-alert)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc    (pulse-channel alert)
-                   :model/PulseChannelRecipient _     (recipient pc :rasta)
-                   :model/PulseChannelRecipient _     (recipient pc :crowberto)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (is (= #{"crowberto@metabase.com" "rasta@metabase.com"}
-                 (recipient-emails (mt/user-http-request
-                                    :rasta :get 200 (alert-question-url card)))))
-          (et/with-expected-messages 1
-            (api:unsubscribe! :rasta 204 alert))
-          (is (= #{"crowberto@metabase.com"}
-                 (recipient-emails (mt/user-http-request
-                                    :crowberto :get 200 (alert-question-url card)))))
-          (is (= (unsubscribe-email :rasta {"Foo" true})
-                 (et/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"Foo"))))))))
+    (is (= {:recipients-1 #{"crowberto@metabase.com" "rasta@metabase.com"}
+            :recipients-2 #{"crowberto@metabase.com"}}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (basic-alert)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc    (pulse-channel alert)
+                          :model/PulseChannelRecipient _     (recipient pc :rasta)
+                          :model/PulseChannelRecipient _     (recipient pc :crowberto)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 (array-map
+                  :recipients-1 (recipient-emails (mt/user-http-request
+                                                   :rasta :get 200 (alert-question-url card)))
+                  :recipients-2 (do
+                                  (api:unsubscribe! :rasta 204 alert)
+                                  (recipient-emails (mt/user-http-request
+                                                     :crowberto :get 200 (alert-question-url card)))))))))))
 
-(deftest unsubscribe-tests-2
   (testing "Alert has two recipients, and admin unsubscribes"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (basic-alert)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc    (pulse-channel alert)
-                   :model/PulseChannelRecipient _     (recipient pc :rasta)
-                   :model/PulseChannelRecipient _     (recipient pc :crowberto)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (is (= #{"crowberto@metabase.com" "rasta@metabase.com"}
-                 (recipient-emails (mt/user-http-request :rasta :get 200 (alert-question-url card)))))
-          (et/with-expected-messages 1
-            (api:unsubscribe! :crowberto 204 alert))
-          (is (= #{"rasta@metabase.com"}
-                 (recipient-emails (mt/user-http-request :crowberto :get 200 (alert-question-url card)))))
-          (is (= (unsubscribe-email :crowberto {"Foo" true})
-                 (et/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"Foo"))))))))
+    (is (= {:recipients-1 #{"crowberto@metabase.com" "rasta@metabase.com"}
+            :recipients-2 #{"rasta@metabase.com"}}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (basic-alert)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc    (pulse-channel alert)
+                          :model/PulseChannelRecipient _     (recipient pc :rasta)
+                          :model/PulseChannelRecipient _     (recipient pc :crowberto)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 (array-map
+                  :recipients-1 (recipient-emails (mt/user-http-request :rasta :get 200 (alert-question-url card)))
+                  :recipients-2 (do
+                                  (api:unsubscribe! :crowberto 204 alert)
+                                  (recipient-emails (mt/user-http-request :crowberto :get 200 (alert-question-url card)))))))))))
 
-(deftest unsubscribe-tests-3
   (testing "Alert should be archived if the last recipient unsubscribes"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (basic-alert)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc    (pulse-channel alert)
-                   :model/PulseChannelRecipient _     (recipient pc :rasta)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (et/with-expected-messages 1 (api:unsubscribe! :rasta 204 alert))
-          (is (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert)))
-          (is (= (unsubscribe-email :rasta {"Foo" true})
-                 (et/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"Foo"))))))))
+    (is (= {:archived? true}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (basic-alert)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc    (pulse-channel alert)
+                          :model/PulseChannelRecipient _     (recipient pc :rasta)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 (api:unsubscribe! :rasta 204 alert)
+                 (array-map
+                  :archived? (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert)))))))))
 
-(deftest unsubscribe-tests-4
   (testing "Alert should not be archived if there is a slack channel"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (basic-alert)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc-1  (assoc (pulse-channel alert) :channel_type :email)
-                   :model/PulseChannel          _     (assoc (pulse-channel alert) :channel_type :slack)
-                   :model/PulseChannelRecipient _     (recipient pc-1 :rasta)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (et/with-expected-messages 1 (api:unsubscribe! :rasta 204 alert))
-          (is (not (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert))))
-          (is (= (unsubscribe-email :rasta {"Foo" true})
-                 (et/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"Foo"))))))))
+    (is (= {:archived? false}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (basic-alert)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc-1  (assoc (pulse-channel alert) :channel_type :email)
+                          :model/PulseChannel          _     (assoc (pulse-channel alert) :channel_type :slack)
+                          :model/PulseChannelRecipient _     (recipient pc-1 :rasta)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 (api:unsubscribe! :rasta 204 alert)
+                 (array-map
+                  :archived? (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert)))))))))
 
-(deftest unsubscribe-tests-5
   (testing "If email is disabled, users should be unsubscribed"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (basic-alert)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc-1  (assoc (pulse-channel alert) :channel_type :email)
-                   :model/PulseChannel          _pc-2 (assoc (pulse-channel alert) :channel_type :slack)
-                   :model/PulseChannelRecipient _     (recipient pc-1 :rasta)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (et/with-expected-messages 1
-            ((alert-client :crowberto)
-             :put 200 (alert-url alert) (assoc-in (default-alert-req card pc-1) [:channels 0 :enabled] false)))
-          (is (not (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert))))
-          (is (= (et/email-to :rasta {:subject "You’ve been unsubscribed from an alert",
-                                      :body    {"https://metabase.com/testmb"          true,
-                                                "letting you know that Crowberto Corv" true}})
-                 (et/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"letting you know that Crowberto Corv"))))))))
+    (is (= {:archived? false}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (basic-alert)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc-1  (assoc (pulse-channel alert) :channel_type :email)
+                          :model/PulseChannel          _pc-2 (assoc (pulse-channel alert) :channel_type :slack)
+                          :model/PulseChannelRecipient _     (recipient pc-1 :rasta)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 ((alert-client :crowberto)
+                  :put 200 (alert-url alert) (assoc-in (default-alert-req card pc-1) [:channels 0 :enabled] false))
+                 (array-map
+                  :archived? (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert)))))))))
 
-(deftest unsubscribe-tests-6
   (testing "Re-enabling email should send users a subscribe notification"
-    (mt/with-temp [:model/Card                  card  (basic-alert-query)
-                   :model/Pulse                 alert (basic-alert)
-                   :model/PulseCard             _     (pulse-card alert card)
-                   :model/PulseChannel          pc-1  (assoc (pulse-channel alert) :channel_type :email, :enabled false)
-                   :model/PulseChannel          _pc-2 (assoc (pulse-channel alert) :channel_type :slack)
-                   :model/PulseChannelRecipient _     (recipient pc-1 :rasta)]
-      (with-alerts-in-readable-collection! [alert]
-        (with-alert-setup!
-          (et/with-expected-messages 1
-            ((alert-client :crowberto)
-             :put 200 (alert-url alert) (assoc-in (default-alert-req card pc-1) [:channels 0 :enabled] true)))
-          (is (not (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert))))
-          (is (= (et/email-to :rasta {:subject "Crowberto Corv added you to an alert",
-                                      :body    {"https://metabase.com/testmb"    true,
-                                                "now getting alerts about .*Foo" true}})
-                 (et/regex-email-bodies #"https://metabase.com/testmb"
-                                        #"now getting alerts about .*Foo"))))))))
+    (is (= {:archived? false}
+           (mt/with-temp [:model/Card                  card  (basic-alert-query)
+                          :model/Pulse                 alert (basic-alert)
+                          :model/PulseCard             _     (pulse-card alert card)
+                          :model/PulseChannel          pc-1  (assoc (pulse-channel alert) :channel_type :email, :enabled false)
+                          :model/PulseChannel          _pc-2 (assoc (pulse-channel alert) :channel_type :slack)
+                          :model/PulseChannelRecipient _     (recipient pc-1 :rasta)]
+             (with-alerts-in-readable-collection! [alert]
+               (with-alert-setup!
+                 ((alert-client :crowberto)
+                  :put 200 (alert-url alert) (assoc-in (default-alert-req card pc-1) [:channels 0 :enabled] true))
+                 (array-map
+                  :archived? (t2/select-one-fn :archived :model/Pulse :id (u/the-id alert))))))))))
 
 (deftest alert-unsubscribe-event-test
   (testing "Alert has two recipients, and non-admin unsubscribes"

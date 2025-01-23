@@ -3,12 +3,11 @@
 
   Deprecated: will soon be migrated to notification APIs."
   (:require
-   [clojure.data :as data]
    [clojure.set :refer [difference]]
+   [compojure.core :refer [DELETE GET POST PUT]]
    [medley.core :as m]
    [metabase.api.common :as api]
    [metabase.api.common.validation :as validation]
-   [metabase.api.macros :as api.macros]
    [metabase.channel.email :as email]
    [metabase.channel.email.messages :as messages]
    [metabase.config :as config]
@@ -27,13 +26,13 @@
 (when config/ee-available?
   (classloader/require 'metabase-enterprise.advanced-permissions.common))
 
-(api.macros/defendpoint :get "/"
+#_{:clj-kondo/ignore [:deprecated-var]}
+(api/defendpoint GET "/"
   "Fetch alerts which the current user has created or will receive, or all alerts if the user is an admin.
   The optional `user_id` will return alerts created by the corresponding user, but is ignored for non-admin users."
-  [_route-params
-   {:keys [archived user_id]} :- [:map
-                                  [:archived {:default false} [:maybe ms/BooleanValue]]
-                                  [:user_id  {:optional true} [:maybe ms/PositiveInt]]]]
+  [archived user_id]
+  {archived [:maybe ms/BooleanValue]
+   user_id  [:maybe ms/PositiveInt]}
   (let [user-id (if api/*is-superuser?*
                   user_id
                   api/*current-user-id*)]
@@ -42,19 +41,20 @@
       (filter mi/can-read? <>)
       (t2/hydrate <> :can_write))))
 
-(api.macros/defendpoint :get "/:id"
+#_{:clj-kondo/ignore [:deprecated-var]}
+(api/defendpoint GET "/:id"
   "Fetch an alert by ID"
-  [{:keys [id]} :- [:map
-                    [:id ms/PositiveInt]]]
+  [id]
+  {id ms/PositiveInt}
   (-> (api/read-check (models.pulse/retrieve-alert id))
       (t2/hydrate :can_write)))
 
-(api.macros/defendpoint :get "/question/:id"
+#_{:clj-kondo/ignore [:deprecated-var]}
+(api/defendpoint GET "/question/:id"
   "Fetch all alerts for the given question (`Card`) id"
-  [{:keys [id]} :- [:map
-                    [:id ms/PositiveInt]]
-   {:keys [archived]} :- [:map
-                          [:archived {:default false} [:maybe ms/BooleanValue]]]]
+  [id archived]
+  {id       [:maybe ms/PositiveInt]
+   archived [:maybe ms/BooleanValue]}
   (-> (if api/*is-superuser?*
         (models.pulse/retrieve-alerts-for-cards {:card-ids [id], :archived? archived})
         (models.pulse/retrieve-user-alerts-for-card {:card-id id, :user-id api/*current-user-id*, :archived?  archived}))
@@ -74,76 +74,21 @@
   [alert]
   (m/find-first #(= :slack (keyword (:channel_type %))) (:channels alert)))
 
-(defn- key-by [key-fn coll]
-  (zipmap (map key-fn coll) coll))
-
-(defn- notify-email-disabled! [alert recipients]
-  (doseq [user recipients]
-    (messages/send-admin-unsubscribed-alert-email! alert user @api/*current-user*)))
-
-(defn- notify-email-enabled! [alert recipients]
-  (doseq [user recipients]
-    (messages/send-you-were-added-alert-email! alert user @api/*current-user*)))
-
-(defn- notify-email-recipient-diffs! [old-alert old-recipients new-alert new-recipients]
-  (let [old-ids->users (key-by :id old-recipients)
-        new-ids->users (key-by :id new-recipients)
-        [removed-ids added-ids _] (data/diff (set (keys old-ids->users))
-                                             (set (keys new-ids->users)))]
-    (doseq [old-id removed-ids
-            :let [removed-user (get old-ids->users old-id)]]
-      (messages/send-admin-unsubscribed-alert-email! old-alert removed-user @api/*current-user*))
-
-    (doseq [new-id added-ids
-            :let [added-user (get new-ids->users new-id)]]
-      (messages/send-you-were-added-alert-email! new-alert added-user @api/*current-user*))))
-
-(defn- notify-recipient-changes!
-  "This function compares `OLD-ALERT` and `UPDATED-ALERT` to determine if there have been any channel or recipient
-  related changes. Recipients that have been added or removed will be notified."
-  [old-alert updated-alert]
-  (let [{old-recipients :recipients, old-enabled :enabled} (email-channel old-alert)
-        {new-recipients :recipients, new-enabled :enabled} (email-channel updated-alert)]
-    (cond
-      ;; Did email notifications just get disabled?
-      (and old-enabled (not new-enabled))
-      (notify-email-disabled! old-alert old-recipients)
-
-      ;; Did a disabled email notifications just get re-enabled?
-      (and (not old-enabled) new-enabled)
-      (notify-email-enabled! updated-alert new-recipients)
-
-      ;; No need to notify recipients if emails are disabled
-      new-enabled
-      (notify-email-recipient-diffs! old-alert old-recipients updated-alert new-recipients))))
-
-(defn- collect-alert-recipients [alert]
-  (set (:recipients (email-channel alert))))
-
-(defn- non-creator-recipients [{{creator-id :id} :creator :as alert}]
-  (remove #(= creator-id (:id %)) (collect-alert-recipients alert)))
-
-(defn- notify-new-alert-created! [alert]
-  (when (email/email-configured?)
-    (doseq [recipient (non-creator-recipients alert)]
-      (messages/send-you-were-added-alert-email! alert recipient @api/*current-user*))))
-
 (defn- maybe-include-csv [card alert-condition]
   (if (= "rows" alert-condition)
     (assoc card :include_csv true)
     card))
 
-(api.macros/defendpoint :post "/"
+#_{:clj-kondo/ignore [:deprecated-var]}
+(api/defendpoint POST "/"
   "Create a new Alert."
-  [_route-params
-   _query-params
-   {:keys [alert_condition card channels]
-    :as new-alert-request-body} :- [:map
-                                    [:alert_condition  models.pulse/AlertConditions]
-                                    [:alert_first_only :boolean]
-                                    [:alert_above_goal {:optional true} [:maybe :boolean]]
-                                    [:card             models.pulse/CardRef]
-                                    [:channels         [:+ :map]]]]
+  [:as {{:keys [alert_condition card channels alert_first_only alert_above_goal]
+         :as new-alert-request-body} :body}]
+  {alert_condition  models.pulse/AlertConditions
+   alert_first_only :boolean
+   alert_above_goal [:maybe :boolean]
+   card             models.pulse/CardRef
+   channels         [:+ :map]}
   (validation/check-has-application-permission :subscription false)
   ;; To create an Alert you need read perms for its Card
   (api/read-check :model/Card (u/the-id card))
@@ -154,30 +99,21 @@
                         only-alert-keys
                         (models.pulse/create-alert! api/*current-user-id* alert-card channels)))]
     (events/publish-event! :event/alert-create {:object new-alert :user-id api/*current-user-id*})
-    (notify-new-alert-created! new-alert)
     ;; return our new Alert
     new-alert))
 
-(defn- notify-on-archive-if-needed!
-  "When an alert is archived, we notify all recipients that they are no longer receiving that alert."
-  [alert]
-  (when (email/email-configured?)
-    (doseq [recipient (collect-alert-recipients alert)]
-      (messages/send-admin-unsubscribed-alert-email! alert recipient @api/*current-user*))))
-
-(api.macros/defendpoint :put "/:id"
+#_{:clj-kondo/ignore [:deprecated-var]}
+(api/defendpoint PUT "/:id"
   "Update a `Alert` with ID."
-  [{:keys [id]} :- [:map
-                    [:id ms/PositiveInt]]
-   _query-params
-   {:keys [card channels archived]
-    :as alert-updates} :- [:map
-                           [:alert_condition  {:optional true} [:maybe models.pulse/AlertConditions]]
-                           [:alert_first_only {:optional true} [:maybe :boolean]]
-                           [:alert_above_goal {:optional true} [:maybe :boolean]]
-                           [:card             {:optional true} [:maybe models.pulse/CardRef]]
-                           [:channels         {:optional true} [:maybe [:+ [:map]]]]
-                           [:archived         {:optional true} [:maybe :boolean]]]]
+  [id :as {{:keys [alert_condition alert_first_only alert_above_goal card channels archived]
+            :as alert-updates} :body}]
+  {id               ms/PositiveInt
+   alert_condition  [:maybe models.pulse/AlertConditions]
+   alert_first_only [:maybe :boolean]
+   alert_above_goal [:maybe :boolean]
+   card             [:maybe models.pulse/CardRef]
+   channels         [:maybe [:+ [:map]]]
+   archived         [:maybe :boolean]}
   (try
     (validation/check-has-application-permission :monitoring)
     (catch clojure.lang.ExceptionInfo _e
@@ -236,20 +172,14 @@
                             {:archived true})))]
       ;; Only admins or users has subscription or monitoring perms
       ;; can update recipients or explicitly archive an alert
-      (when (and (or api/*is-superuser?*
-                     has-subscription-perms?
-                     has-monitoring-permissions?)
-                 (email/email-configured?))
-        (if archived
-          (notify-on-archive-if-needed! updated-alert)
-          (notify-recipient-changes! alert-before-update updated-alert)))
       ;; Finally, return the updated Alert
       updated-alert)))
 
-(api.macros/defendpoint :delete "/:id/subscription"
+#_{:clj-kondo/ignore [:deprecated-var]}
+(api/defendpoint DELETE "/:id/subscription"
   "For users to unsubscribe themselves from the given alert."
-  [{:keys [id]} :- [:map
-                    [:id ms/PositiveInt]]]
+  [id]
+  {id ms/PositiveInt}
   (validation/check-has-application-permission :subscription false)
   (let [alert (models.pulse/retrieve-alert id)]
     (api/read-check alert)
@@ -260,7 +190,7 @@
     ;; Send emails letting people know they have been unsubscribed
     (let [user @api/*current-user*]
       (when (email/email-configured?)
-        (messages/send-you-unsubscribed-alert-email! alert user))
+        (messages/send-you-unsubscribed-notification-card-email! alert user))
       (events/publish-event! :event/alert-unsubscribe {:object {:email (:email user)}
                                                        :user-id api/*current-user-id*}))
     ;; finally, return a 204 No Content
