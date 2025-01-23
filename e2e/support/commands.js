@@ -1,3 +1,5 @@
+import { H } from "e2e/support";
+
 import "./commands/ui/button";
 import "./commands/ui/icon";
 
@@ -21,3 +23,5 @@ import "./commands/component";
 
 import { addCustomCommands } from "./commands/downloads/downloadUtils";
 addCustomCommands();
+
+cy.H = { ...H };
