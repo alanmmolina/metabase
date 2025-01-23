@@ -80,21 +80,21 @@
   {::*boolean-int*  ::boolean
    ::*float-or-int* ::float})
 
+(def ^:private existing-type->preferred-concretions
+  "For an existing column type, maps abstract types to their preferred concretion.
+
+  e.g for an existing int column, floats with no fractional component should be coerced
+  rather than forcing a schema migration."
+  {::int     {::*float-or-int* ::int}
+   ::boolean {::*float-or-int* ::float}})
+
 ;; TODO: the set of allowed promotions should be driver-specific, because not all drivers support coercions between all
 ;; types e.g. redshift does not allow coercions except between text types
 (def ^:private allowed-promotions
   "A mapping of which types a column can be implicitly relaxed to, based on the content of appended values.
   If we require a relaxation which is not allowlisted here, we will reject the corresponding file."
-  {::int #{::float}})
-
-(def ^:private column-type->coercible-value-types
-  "A mapping of which value types should be coerced to the given existing type, rather than triggering promotion."
-  {::int #{::*float-or-int*}})
-
-(defn- coerce?
-  "Can values of the given type be coerced to the given existing column type, in a lossless fashion?"
-  [column-type value-type]
-  (contains? (column-type->coercible-value-types column-type) value-type))
+  {::int     #{::float}
+   ::boolean #{::int, ::float}})
 
 (def value-types
   "All type tags which values can be inferred as. An ordered set from most to least specialized."
@@ -116,12 +116,16 @@
   (cond
     ;; If the type is concrete, there is nothing to do.
     (column-type? value-type) value-type
+
     ;; If we know nothing about the value type, treat it as an arbitrary string.
     (nil? value-type) ::text
-    ;; If configured, coerce the value to the existing type
-    (coerce? existing-type value-type) existing-type
-    ;; Otherwise, project it to its canonical concretion.
-    :else (abstract->concrete value-type)))
+
+    ;; Otherwise, project it to its concretion.
+    :else
+    (let [preferred-concretion (existing-type->preferred-concretions existing-type {})]
+      ;; prefer an existing-column specialised concretion if it exists
+      (or (preferred-concretion value-type)
+          (abstract->concrete value-type)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; [[value->type]] helpers
@@ -243,6 +247,9 @@
            (filter #((type->check %) trimmed))
            first))))
 
+(def ^:private widening-abstraction
+  {::boolean ::*boolean-int*})
+
 (defn- relax-type
   "Given an existing column type, and a new value, relax the type until it includes the value."
   [type->check current-type value]
@@ -251,7 +258,8 @@
         :else (let [trimmed (str/trim value)]
                 (if (str/blank? trimmed)
                   current-type
-                  (->> (cons current-type (ancestors h current-type))
+                  (->> (let [t (widening-abstraction current-type current-type)]
+                         (cons t (ancestors h t)))
                        (filter #((type->check %) trimmed))
                        first)))))
 
