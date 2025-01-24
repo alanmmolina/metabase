@@ -42,7 +42,26 @@ describe("scenarios > account > notifications", () => {
             H.getCurrentUser().then(({ body: { id: user_id } }) => {
               cy.createQuestion(getQuestionDetails()).then(
                 ({ body: { id: card_id } }) => {
-                  H.createQuestionAlert({ card_id, user_id, admin_id });
+                  H.createQuestionAlert({
+                    card_id,
+                    handlers: [
+                      {
+                        channel_type: "channel/email",
+                        recipients: [
+                          {
+                            type: "notification-recipient/user",
+                            user_id,
+                            details: null,
+                          },
+                          {
+                            type: "notification-recipient/user",
+                            user_id: admin_id,
+                            details: null,
+                          },
+                        ],
+                      },
+                    ],
+                  });
                 },
               );
             });
@@ -71,7 +90,7 @@ describe("scenarios > account > notifications", () => {
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Question");
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText("Emailed hourly", { exact: false });
+      cy.findByText("Daily at 9:00 am", { exact: false });
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Created by you", { exact: false });
     });
@@ -107,10 +126,12 @@ describe("scenarios > account > notifications", () => {
       cy.findByText("Question");
       clickUnsubscribe();
 
-      H.modal().within(() => {
-        cy.findByText("Confirm you want to unsubscribe");
-        cy.findByText("Unsubscribe").click();
-      });
+      H.modal()
+        .last()
+        .within(() => {
+          cy.findByText("Confirm you want to unsubscribe");
+          cy.findByText("Unsubscribe").click();
+        });
 
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Question").should("not.exist");
